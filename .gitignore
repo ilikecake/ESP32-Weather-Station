@@ -130,3 +130,6 @@ dmypy.json
 
 #Don't accidentally include the 'real' secrets file
 secrets.py
+
+#Dont include SW temp parts
+~$*
