@@ -14,7 +14,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+#lib/		#Comment this out so that the CircuitPyhon libraries are included.
 lib64/
 parts/
 sdist/
@@ -127,3 +127,6 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+#Don't accidentally include the 'real' secrets file
+secrets.py
