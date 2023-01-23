@@ -33,6 +33,7 @@ except ImportError:
 pixel = neopixel.NeoPixel(board.NEOPIXEL, 1)
 i2c = board.STEMMA_I2C()
 bme280 = adafruit_bme280.Adafruit_BME280_I2C(i2c)
+wifi.radio.hostname = secrets["device_ID"]
 
 # Define callback methods which are called when events occur
 # pylint: disable=unused-argument, redefined-outer-name
@@ -50,12 +51,10 @@ def disconnect(mqtt_client, userdata, rc):
     # from the broker.
     #print("Disconnected from MQTT Broker!")
 
-
 def subscribe(mqtt_client, userdata, topic, granted_qos):
     pass
     # This method is called when the mqtt_client subscribes to a new feed.
     #print("Subscribed to {0} with QOS level {1}".format(topic, granted_qos))
-
 
 def unsubscribe(mqtt_client, userdata, topic, pid):
     pass
@@ -67,7 +66,6 @@ def publish(mqtt_client, userdata, topic, pid):
     pass
     # This method is called when the mqtt_client publishes data to a feed.
     #print("Published to {0} with PID {1}".format(topic, pid))
-
 
 def message(client, topic, message):
     pass
@@ -100,27 +98,29 @@ def ConnectToNetwork():
     global mqtt_client
     Retries = 0
 
-    #Connect to wifi
-    print("Connecting to SSID: {0:s}...".format(secrets["ssid"]), end =".")
-    if wifi.radio.ipv4_address is None:
-        ConnectToWifi()
-        print("ok")
-    else:
-        print("already connected")
-    print("  IP: ", wifi.radio.ipv4_address)
+    while Retries < TIMEOUT_COUNTS:
+        Retries = Retries + 1
 
-    #Connect to MQTT broker
-    Retries = 0
-    print("Connecting to MQTT broker at %s..." % mqtt_client.broker, end =".")
-    pixel.fill((0, 0, 50))  #Blue
+        if wifi.radio.ipv4_address is None:
+            #Not connected to wifi
+            print("Connecting to SSID: {0:s}...".format(secrets["ssid"]), end =".")
+            pixel.fill((50, 0, 0))  #Red
 
-    while True:
-        if Retries > TIMEOUT_COUNTS:
-            microcontroller.reset()
+            try:
+                wifi.radio.connect(secrets["ssid"], secrets["password"])
+            except Exception as e:  # pylint: disable=broad-except
+                print("Failed ({0:d}/{1:d}). Error: ".format(Retries, TIMEOUT_COUNTS), e)
+                time.sleep(RETRY_DELAY)
+            else:
+                if wifi.radio.ipv4_address is not None:
+                    print("ok")
+                    print("  IP: ", wifi.radio.ipv4_address)
+                    Retries = Retries - 1   #Wifi is connected, but MQTT won't try to connect until the next time through the loop.
         else:
-            Retries = Retries + 1
+            #Connected to wifi, try to connect to MQTT
+            print("Connecting to MQTT broker at %s..." % mqtt_client.broker, end =".")
+            pixel.fill((0, 0, 50))  #Blue
 
-        if wifi.radio.ipv4_address is not None:     #TODO: if the wifi connection is lost, I think the IP address becomes none. I should test this...
             try:
                 mqtt_client.connect()       #This command has a built in retry/timeout thing, so it takes about 3 min to fail.
                 mqtt_client.publish(MQTT_Config_Temp, MQTT_Config_Temp_Payload)
@@ -132,63 +132,10 @@ def ConnectToNetwork():
             else:
                 #We are connected to wifi and the MQTT broker.
                 pixel.fill((0, 0, 0))  #Off
-                break
-        else:
-            #This could happen if the wifi connection is lost as we are trying to connect to the MQTT broker.
-            print("Connecting to SSID: {0:s}...".format(secrets["ssid"]), end =".")
-            ConnectToWifi()
-            print("ok")
-            print("  IP: ", wifi.radio.ipv4_address)
-            print("Connecting to MQTT broker at %s..." % mqtt_client.broker, end =".")
-            pixel.fill((0, 0, 50))  #Blue
-    print("ok")
-
-def ConnectToWifi():
-    global pixel
-    Retries = 0
-
-    pixel.fill((50, 0, 0))  #Red
-    wifi.radio.hostname = secrets["device_ID"]
-
-    while True:
-        if Retries > TIMEOUT_COUNTS:
-            microcontroller.reset()
-        else:
-            Retries = Retries + 1
-        try:
-            wifi.radio.connect(secrets["ssid"], secrets["password"])
-        except Exception as e:  # pylint: disable=broad-except
-            print("Failed to connect to WiFi ({0:d}/{1:d}). Error: ".format(Retries, TIMEOUT_COUNTS), e)
-            time.sleep(RETRY_DELAY)
-        else:
-            if wifi.radio.ipv4_address is not None:
-                pixel.fill((0, 0, 0))  #Off
+                print("ok")
                 return
-
-def ConnectToMQTT():    #TODO: not used, delete
-    global mqtt_client
-    global pixel
-    Retries = 0
-
-    pixel.fill((0, 0, 50))  #Blue
-
-    while True:
-        if Retries > TIMEOUT_COUNTS:
-            microcontroller.reset()
-        else:
-            Retries = Retries + 1
-
-        try:
-            mqtt_client.connect()       #TODO: This command blocks until a connection is established. Do I need to have the rest of this code here?
-            mqtt_client.publish(MQTT_Config_Temp, MQTT_Config_Temp_Payload)
-            mqtt_client.publish(MQTT_Config_Humidity, MQTT_Config_Humidity_Payload)
-            mqtt_client.publish(MQTT_Config_Pressure, MQTT_Config_Pressure_Payload)
-        except Exception as e:  # pylint: disable=broad-except
-            print("Failed to connect to MQTT ({0:d}/{1:d}). Error:".format(Retries, TIMEOUT_COUNTS), e)
-            time.sleep(RETRY_DELAY)
-        else:
-            pixel.fill((0, 0, 0))  #Off
-            break
+    #If we get here, the timeout count is reached. Hard reset the device.
+    microcontroller.reset()
 
 #This function has a shorter timeout delay and timeout count than the wifi and MQTT connect functions
 # This is because NTP is not required for the device to function, and I don't want the device to stop working if external internet access is lost.
@@ -197,7 +144,7 @@ def ConnectToMQTT():    #TODO: not used, delete
 def GetTimeFromNTP():
     global pixel
     NTP_Retries = 5
-    NTP_Retry_Delay = 5
+    NTP_Retry_Delay = 1 #seconds
     Retries = 0
 
     pixel.fill((50, 50, 50))  #White
@@ -248,15 +195,6 @@ print('MAC Address: {0:X}:{1:X}:{2:X}:{3:X}:{4:X}:{5:X}'.format(wifi.radio.mac_a
 
 ConnectToNetwork()
 
-#print("Connecting to SSID: {0:s}...".format(secrets["ssid"]), end =".")
-#ConnectToWifi()
-#print("ok")
-#print("  IP: ", wifi.radio.ipv4_address)
-
-#print("Connecting to MQTT broker at %s..." % mqtt_client.broker, end =".")
-#ConnectToMQTT()
-#print("ok")
-
 print("Setting time from NTP...", end =".")
 NTP_Time_Set = GetTimeFromNTP()
 if NTP_Time_Set:
@@ -270,17 +208,15 @@ pixel.fill((0, 0, 0))  #Off
 NTP_Retry = 0
 
 while True:
-
     #If we don't have a valid time from NTP, try to get it here
-    #Time is not required, so the get time function will return
-    if not NTP_Time_Set:
-        if NTP_Retry > 100:
-            NTP_Time_Set = GetTimeFromNTP()
-        if NTP_Time_Set:
-            NTP_Retry = 0
-        else:
-            NTP_Retry = NTP_Retry + 1
+    #This function checks for a time every ~15 min if the RTC is not set, and every 24 hours if it is.
+    if ((not NTP_Time_Set) and (NTP_Retry > 100)) or (NTP_Retry > 8640):
+        NTP_Time_Set = GetTimeFromNTP()
+        NTP_Retry = 0
+    else:
+        NTP_Retry = NTP_Retry + 1
 
+    pixel.fill((0, 50, 0))
     now = time.localtime()
     temp_C = bme280.temperature
     temp_F = (temp_C * 9/5) + 32
@@ -299,12 +235,9 @@ while True:
         NTP_Retry = 0
         print("Error sending data: ", e)
         ConnectToNetwork()
-        #ConnectToWifi()
-        #ConnectToMQTT()
         NTP_Time_Set = GetTimeFromNTP()
         continue
 
-    pixel.fill((0, 50, 0))
     time.sleep(.25)
     pixel.fill((0, 0, 0))
     time.sleep(9.75)
