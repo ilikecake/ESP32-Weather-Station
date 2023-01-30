@@ -123,9 +123,9 @@ def ConnectToNetwork():
 
             try:
                 mqtt_client.connect()       #This command has a built in retry/timeout thing, so it takes about 3 min to fail.
-                mqtt_client.publish(MQTT_Config_Temp, MQTT_Config_Temp_Payload)
-                mqtt_client.publish(MQTT_Config_Humidity, MQTT_Config_Humidity_Payload)
-                mqtt_client.publish(MQTT_Config_Pressure, MQTT_Config_Pressure_Payload)
+                mqtt_client.publish(MQTT_Config_Temp, MQTT_Config_Temp_Payload, qos=1, retain=True)
+                mqtt_client.publish(MQTT_Config_Humidity, MQTT_Config_Humidity_Payload, qos=1, retain=True)
+                mqtt_client.publish(MQTT_Config_Pressure, MQTT_Config_Pressure_Payload, qos=1, retain=True)
             except Exception as e:  # pylint: disable=broad-except
                 print("Failed ({0:d}/{1:d}). Error:".format(Retries, TIMEOUT_COUNTS), e)
                 time.sleep(RETRY_DELAY)     #Note: there is a delay/retry built into the connect function also, so this will take longer than you think.
