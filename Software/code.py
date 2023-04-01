@@ -98,9 +98,9 @@ def connect(mqtt_client, userdata, flags, rc):
     #print("Flags: {0}\n RC: {1}".format(flags, rc))
 
 def disconnect(mqtt_client, userdata, rc):
-    #pass
+    pass
     #This method is called when the mqtt_client disconnects from the broker.
-    print("Disconnected from MQTT Broker!")
+    #print("Disconnected from MQTT Broker!")
 
 def subscribe(mqtt_client, userdata, topic, granted_qos):
     pass
@@ -114,14 +114,20 @@ def unsubscribe(mqtt_client, userdata, topic, pid):
 
 
 def publish(mqtt_client, userdata, topic, pid):
-    #pass
+    pass
     #This method is called when the mqtt_client publishes data to a feed.
-    print("Published to {0} with PID {1}".format(topic, pid))
+    #print("Published to {0} with PID {1}".format(topic, pid))
 
 def message(client, topic, message):
     #pass
     #Method called when a client's subscribed feed has a new value.
-    print("New message on topic {0}: {1}".format(topic, message))
+    #print("New message on topic {0}: {1}".format(topic, message))
+    if (topic == MQTT_lwt) and (message == "offline"):
+        #If the device resets quickly, it appears that the LWT message is not reset when the device reconnects.
+        #This leads to the LWT message firing even through the device is online.
+        #The device will never intentionally send a LWT message of 'offline', so if that message is recieved,
+        #resend the 'online' message.
+        mqtt_client.publish(MQTT_lwt, 'online', qos=1, retain=True)
 
 # Create a socket pool
 pool = socketpool.SocketPool(wifi.radio)
@@ -306,7 +312,7 @@ ticks = 0
 
 #Indicate the device is online
 mqtt_client.publish(MQTT_lwt, 'online', qos=1, retain=True)
-mqtt_client.publish(MQTT_lwt, 'online', qos=1, retain=True)
+#mqtt_client.publish(MQTT_lwt, 'online', qos=1, retain=True)
 
 while True:
     #If we don't have a valid time from NTP, try to get it here
