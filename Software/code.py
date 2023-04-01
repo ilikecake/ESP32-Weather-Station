@@ -38,6 +38,56 @@ i2c = board.STEMMA_I2C()
 bme280 = adafruit_bme280.Adafruit_BME280_I2C(i2c)
 wifi.radio.hostname = secrets["device_ID"]
 
+#Define MQTT variables
+MQTT_State_Topic = "homeassistant/sensor/" + secrets["UUID"] + "/state"
+MQTT_Config_Temp = "homeassistant/sensor/" + secrets["UUID"]+"_temp/config"
+MQTT_Config_Humidity = "homeassistant/sensor/"+secrets["UUID"]+"_humidity/config"
+MQTT_Config_Pressure = "homeassistant/sensor/"+secrets["UUID"]+"_pressure/config"
+
+MQTT_lwt = "homeassistant/sensor/"+secrets["UUID"]+"_" + secrets["device_ID"] + "/lwt"
+
+MQTT_Device_info = {"ids":               [secrets["UUID"]],                                         \
+                    "name":              secrets["device_name"],                                    \
+                    "suggested_area":    "Outside",                                                 \
+                    "manufacturer":      "Pat Satyshur",                                            \
+                    "model":             "Home Assistant Discovery for "+secrets["device_name"],    \
+                    "sw_version":        "https://github.com/ilikecake/ESP32-Weather-Station",         \
+                    "configuration_url": "https://github.com/ilikecake/ESP32-Weather-Station"          }
+
+
+MQTT_Config_Temp_Payload = json.dumps({"device_class":           "temperature",                             \
+                                       "name":                   secrets["device_name"] + " Temperature",   \
+                                       "state_topic":            MQTT_State_Topic,                          \
+                                       "unit_of_measurement":    "°F",                                      \
+                                       "value_template":         "{{value_json.temperature}}",              \
+                                       "unique_id":              secrets["UUID"]+"_temp",                   \
+                                       "availability_topic":     MQTT_lwt,                                  \
+                                       "payload_available":      "online",                                  \
+                                       "payload_not_available":  "offline",                                 \
+                                       "device":                 MQTT_Device_info                           })
+
+MQTT_Config_Humidity_Payload = json.dumps({"device_class":           "humidity",                                \
+                                           "name":                   secrets["device_name"] + " Humidity",      \
+                                           "state_topic":            MQTT_State_Topic,                          \
+                                           "unit_of_measurement":    "%",                                       \
+                                           "value_template":         "{{value_json.humidity}}",                 \
+                                           "unique_id":              secrets["UUID"]+"_humidity",               \
+                                           "availability_topic":     MQTT_lwt,                                  \
+                                           "payload_available":      "online",                                  \
+                                           "payload_not_available":  "offline",                                 \
+                                           "device":                 MQTT_Device_info                           })
+
+MQTT_Config_Pressure_Payload = json.dumps({"device_class":           "pressure",                                \
+                                           "name":                   secrets["device_name"] + " Pressure",      \
+                                           "state_topic":            MQTT_State_Topic,                          \
+                                           "unit_of_measurement":    "hPa",                                     \
+                                           "value_template":         "{{value_json.pressure}}",                 \
+                                           "unique_id":              secrets["UUID"]+"_pressure",               \
+                                           "availability_topic":     MQTT_lwt,                                  \
+                                           "payload_available":      "online",                                  \
+                                           "payload_not_available":  "offline",                                 \
+                                           "device":                 MQTT_Device_info                           })
+
 # Define callback methods which are called when events occur
 # pylint: disable=unused-argument, redefined-outer-name
 #TODO: Do I need any of these?
@@ -48,9 +98,9 @@ def connect(mqtt_client, userdata, flags, rc):
     #print("Flags: {0}\n RC: {1}".format(flags, rc))
 
 def disconnect(mqtt_client, userdata, rc):
-    pass
+    #pass
     #This method is called when the mqtt_client disconnects from the broker.
-    #print("Disconnected from MQTT Broker!")
+    print("Disconnected from MQTT Broker!")
 
 def subscribe(mqtt_client, userdata, topic, granted_qos):
     pass
@@ -64,14 +114,14 @@ def unsubscribe(mqtt_client, userdata, topic, pid):
 
 
 def publish(mqtt_client, userdata, topic, pid):
-    pass
+    #pass
     #This method is called when the mqtt_client publishes data to a feed.
-    #print("Published to {0} with PID {1}".format(topic, pid))
+    print("Published to {0} with PID {1}".format(topic, pid))
 
 def message(client, topic, message):
-    pass
+    #pass
     #Method called when a client's subscribed feed has a new value.
-    #print("New message on topic {0}: {1}".format(topic, message))
+    print("New message on topic {0}: {1}".format(topic, message))
 
 # Create a socket pool
 pool = socketpool.SocketPool(wifi.radio)
@@ -85,6 +135,15 @@ mqtt_client = MQTT.MQTT(
     socket_pool=pool,
     ssl_context=ssl.create_default_context(),
 )
+
+# Connect callback handlers to mqtt_client
+mqtt_client.on_connect = connect
+mqtt_client.on_disconnect = disconnect
+mqtt_client.on_subscribe = subscribe
+mqtt_client.on_unsubscribe = unsubscribe
+mqtt_client.on_publish = publish
+mqtt_client.on_message = message
+mqtt_client.will_set(MQTT_lwt,'offline')
 
 def ConnectToNetwork():
     global pixel
@@ -116,10 +175,13 @@ def ConnectToNetwork():
 
             try:
                 mqtt_client.connect()       #This command has a built in retry/timeout thing, so it takes about 3 min to fail.
-                mqtt_client.publish(MQTT_lwt, 'online', qos=1, retain=True)
-                mqtt_client.publish(MQTT_Config_Temp, MQTT_Config_Temp_Payload)
-                mqtt_client.publish(MQTT_Config_Humidity, MQTT_Config_Humidity_Payload)
-                mqtt_client.publish(MQTT_Config_Pressure, MQTT_Config_Pressure_Payload)
+
+                mqtt_client.subscribe(MQTT_lwt, qos=1)
+
+                #mqtt_client.publish(MQTT_lwt, 'online', qos=1, retain=True)
+                mqtt_client.publish(MQTT_Config_Temp, MQTT_Config_Temp_Payload, qos=1, retain=True)
+                mqtt_client.publish(MQTT_Config_Humidity, MQTT_Config_Humidity_Payload, qos=1, retain=True)
+                mqtt_client.publish(MQTT_Config_Pressure, MQTT_Config_Pressure_Payload, qos=1, retain=True)
             except Exception as e:  # pylint: disable=broad-except
                 print("Failed ({0:d}/{1:d}). Error:".format(Retries, TIMEOUT_COUNTS), e)
                 time.sleep(RETRY_DELAY)     #Note: there is a delay/retry built into the connect function also, so this will take longer than you think.
@@ -217,90 +279,6 @@ def HandleDST(now):
     if corrected_time_struct is not None:
         rtc.RTC().datetime = corrected_time_struct
 
-
-#Define MQTT variables
-#MQTT_State_Topic = "homeassistant/sensor/" + secrets["device_ID"] + "/state"
-#MQTT_Config_Temp = "homeassistant/sensor/"+secrets["device_ID"]+"_temp/config"
-#MQTT_Config_Humidity = "homeassistant/sensor/"+secrets["device_ID"]+"_humidity/config"
-#MQTT_Config_Pressure = "homeassistant/sensor/"+secrets["device_ID"]+"_pressure/config"
-
-MQTT_State_Topic = "homeassistant/sensor/" + secrets["UUID"] + "/state"
-MQTT_Config_Temp = "homeassistant/sensor/" + secrets["UUID"]+"_temp/config"
-MQTT_Config_Humidity = "homeassistant/sensor/"+secrets["UUID"]+"_humidity/config"
-MQTT_Config_Pressure = "homeassistant/sensor/"+secrets["UUID"]+"_pressure/config"
-
-MQTT_lwt = "homeassistant/sensor/"+secrets["UUID"]+"_" + secrets["device_ID"] + "/lwt"
-
-MQTT_Device_info = {"ids":               [secrets["UUID"]],                                         \
-                    "name":              secrets["device_name"],                                    \
-                    "suggested_area":    "Outside",                                                 \
-                    "manufacturer":      "Pat Satyshur",                                            \
-                    "model":             "Home Assistant Discovery for "+secrets["device_name"],    \
-                    "sw_version":        "https://github.com/ilikecake/ESP32-Weather-Station",         \
-                    "configuration_url": "https://github.com/ilikecake/ESP32-Weather-Station"          }
-
-
-MQTT_Config_Temp_Payload = json.dumps({"device_class":           "temperature",                             \
-                                       "name":                   secrets["device_name"] + " Temperature",   \
-                                       "state_topic":            MQTT_State_Topic,                          \
-                                       "unit_of_measurement":    "°F",                                      \
-                                       "value_template":         "{{value_json.temperature}}",              \
-                                       "unique_id":              secrets["UUID"]+"_temp",                   \
-                                       "availability_topic":     MQTT_lwt,                                  \
-                                       "payload_available":      "online",                                  \
-                                       "payload_not_available":  "offline",                                 \
-                                       "device":                 MQTT_Device_info                           })
-
-MQTT_Config_Humidity_Payload = json.dumps({"device_class":           "humidity",                                \
-                                           "name":                   secrets["device_name"] + " Humidity",      \
-                                           "state_topic":            MQTT_State_Topic,                          \
-                                           "unit_of_measurement":    "%",                                       \
-                                           "value_template":         "{{value_json.humidity}}",                 \
-                                           "unique_id":              secrets["UUID"]+"_humidity",               \
-                                           "availability_topic":     MQTT_lwt,                                  \
-                                           "payload_available":      "online",                                  \
-                                           "payload_not_available":  "offline",                                 \
-                                           "device":                 MQTT_Device_info                           })
-
-MQTT_Config_Pressure_Payload = json.dumps({"device_class":           "pressure",                                \
-                                           "name":                   secrets["device_name"] + " Pressure",      \
-                                           "state_topic":            MQTT_State_Topic,                          \
-                                           "unit_of_measurement":    "hPa",                                     \
-                                           "value_template":         "{{value_json.pressure}}",                 \
-                                           "unique_id":              secrets["UUID"]+"_pressure",               \
-                                           "availability_topic":     MQTT_lwt,                                  \
-                                           "payload_available":      "online",                                  \
-                                           "payload_not_available":  "offline",                                 \
-                                           "device":                 MQTT_Device_info                           })
-
-
-# Connect callback handlers to mqtt_client
-mqtt_client.on_connect = connect
-mqtt_client.on_disconnect = disconnect
-mqtt_client.on_subscribe = subscribe
-mqtt_client.on_unsubscribe = unsubscribe
-mqtt_client.on_publish = publish
-mqtt_client.on_message = message
-mqtt_client.will_set(MQTT_lwt,'offline')
-
-#MQTT_Config_Temp_Payload = json.dumps({"device_class":           "temperature", \
-#                                       "name":                   secrets["device_name"] + " Temperature", \
-#                                       "state_topic":            MQTT_State_Topic, \
-#                                       "unit_of_measurement":    "°F", \
-#                                       "value_template":         "{{value_json.temperature}}" })
-
-#MQTT_Config_Humidity_Payload = json.dumps({"device_class":           "humidity", \
-#                                           "name":                   secrets["device_name"] + " Humidity", \
-#                                           "state_topic":            MQTT_State_Topic, \
-#                                           "unit_of_measurement":    "%", \
-#                                           "value_template":         "{{value_json.humidity}}" })
-
-#MQTT_Config_Pressure_Payload = json.dumps({"device_class":           "pressure", \
-#                                          "name":                   secrets["device_name"] + " Pressure", \
-#                                          "state_topic":            MQTT_State_Topic, \
-#                                          "unit_of_measurement":    "hPa", \
-#                                           "value_template":         "{{value_json.pressure}}" })
-
 def RemoveMQTT():
     #Sends empty config packets to home assistant. This tells home assistant to delete these sensors from its config.
     #Should never be called, but I am saving this here in case it is needed for debug.
@@ -319,6 +297,17 @@ print("Startup Complete")
 pixel.fill((0, 0, 0))  #Off
 NTP_Retry = 0
 
+#If you need to remove the config entries in home assistant for some reason, uncomment these two lines.
+#RemoveMQTT()
+#time.sleep(100)
+
+tick_divider = 10
+ticks = 0
+
+#Indicate the device is online
+mqtt_client.publish(MQTT_lwt, 'online', qos=1, retain=True)
+mqtt_client.publish(MQTT_lwt, 'online', qos=1, retain=True)
+
 while True:
     #If we don't have a valid time from NTP, try to get it here
     #This function checks for a time every ~15 min if the RTC is not set, and every 24 hours if it is.
@@ -328,18 +317,21 @@ while True:
     else:
         NTP_Retry = NTP_Retry + 1
 
-    pixel.fill((0, 50, 0))
-    now = time.localtime()
-    temp_C = bme280.temperature
-    temp_F = (temp_C * 9/5) + 32
-    humid = bme280.humidity
-    press = bme280.pressure
-
-    print('{0:02d}:{1:02d}:{2:02d}: T:{3:.4f}, P:{4:.4f}, H:{5:.4f}'.format(now.tm_hour, now.tm_min, now.tm_sec, temp_F, press, humid))
+    #print("Tick: ", ticks)
+    if ticks == 0:
+        pixel.fill((0, 50, 0))
+        now = time.localtime()
+        temp_C = bme280.temperature
+        temp_F = (temp_C * 9/5) + 32
+        humid = bme280.humidity
+        press = bme280.pressure
+        print('{0:02d}:{1:02d}:{2:02d}: T:{3:.4f}, P:{4:.4f}, H:{5:.4f}'.format(now.tm_hour, now.tm_min, now.tm_sec, temp_F, press, humid))
 
     try:
         mqtt_client.loop()
-        mqtt_client.publish(MQTT_State_Topic, json.dumps({"temperature": temp_F, "humidity": humid, "pressure": press}))
+        if ticks == 0:
+            mqtt_client.publish(MQTT_State_Topic, json.dumps({"temperature": temp_F, "humidity": humid, "pressure": press}))
+        #mqtt_client.publish(MQTT_lwt, 'online', qos=1, retain=True)
     except (ValueError, RuntimeError, OSError, MQTT.MMQTTException) as e:
         #If MQTT broker disappears: MMQTTException: PINGRESP not returned from broker.
         #If wifi AP disappears: OSError: [Errno 113] ECONNABORTED
@@ -350,6 +342,11 @@ while True:
         NTP_Time_Set = GetTimeFromNTP()
         continue
 
+    if ticks == tick_divider:
+        ticks = 0
+    else:
+        ticks = ticks+1
+
     time.sleep(.25)
     pixel.fill((0, 0, 0))
-    time.sleep(9.75)
+    time.sleep(.75)
