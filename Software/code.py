@@ -127,6 +127,7 @@ def message(client, topic, message):
         #This leads to the LWT message firing even through the device is online.
         #The device will never intentionally send a LWT message of 'offline', so if that message is recieved,
         #resend the 'online' message.
+        #print("Caught offline message, setting back to online")
         mqtt_client.publish(MQTT_lwt, 'online', qos=1, retain=True)
 
 # Create a socket pool
@@ -336,8 +337,8 @@ while True:
     try:
         mqtt_client.loop()
         if ticks == 0:
+            mqtt_client.publish(MQTT_lwt, 'online', qos=1, retain=True)
             mqtt_client.publish(MQTT_State_Topic, json.dumps({"temperature": temp_F, "humidity": humid, "pressure": press}))
-        #mqtt_client.publish(MQTT_lwt, 'online', qos=1, retain=True)
     except (ValueError, RuntimeError, OSError, MQTT.MMQTTException) as e:
         #If MQTT broker disappears: MMQTTException: PINGRESP not returned from broker.
         #If wifi AP disappears: OSError: [Errno 113] ECONNABORTED
